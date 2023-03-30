@@ -20,8 +20,6 @@ import gevent
 from gevent import queue
 import time
 import json
-import os
-
 app = Flask(__name__)
 sockets = Sockets(app)
 app.debug = True
@@ -59,29 +57,71 @@ class World:
     def world(self):
         return self.space
 
-myWorld = World()        
 
-def set_listener( entity, data ):
-    ''' do something with the update ! '''
+class SocketHandler:
+    def __init__(self, queue):
+        self.sockets = dict()
+        self.queue = queue
 
-myWorld.add_set_listener( set_listener )
+    def send(self, entity, data):
+        packet = json.dumps({entity:data})
+        marked_dead = []
         
+        self.queue.put(packet)
+        for client, socket in self.sockets.items():
+            if (socket.closed == False):
+                socket.send(packet)
+            else:
+                marked_dead.append(client)
+        
+        for dead in marked_dead:
+            self.unregister(dead)
+    
+    def register(self, name, socket):
+        self.sockets[name] = socket
+    
+    def unregister(self, name):
+        del self.sockets[name]
+
+            
+myWorld = World()        
+queue = queue.Queue()
+socket_handler = SocketHandler(queue)
+
+myWorld.add_set_listener( socket_handler.send )
+
+ 
 @app.route('/')
 def hello():
     '''Return something coherent here.. perhaps redirect to /static/index.html '''
-    return None
+    return flask.redirect("/static/index.html")
 
-def read_ws(ws,client):
+def read_ws(ws, client):
     '''A greenlet function that reads from the websocket and updates the world'''
-    # XXX: TODO IMPLEMENT ME
-    return None
+    while not ws.closed:
+        msg = ws.receive()
+        if (msg is not None):
+            packet = json.loads( msg )
+            key, value = list(packet.items())[0]
+            myWorld.set(key, value)
+
+        gevent.sleep(0.1)
 
 @sockets.route('/subscribe')
 def subscribe_socket(ws):
     '''Fufill the websocket URL of /subscribe, every update notify the
-       websocket and read updates from the websocket '''
-    # XXX: TODO IMPLEMENT ME
-    return None
+       websocket and read updates from the websocket'''
+    
+    
+    client = str(time.time())
+    socket_handler.register(client, ws)
+    while not ws.closed:
+        msg = ws.receive()
+        if (msg is not None):
+            packet = json.loads(msg)
+            key, value = list(packet.items())[0]
+            myWorld.set(key, value)
+        gevent.sleep(0.1)
 
 
 # I give this to you, this is how you get the raw body/data portion of a post in flask
@@ -99,23 +139,26 @@ def flask_post_json():
 @app.route("/entity/<entity>", methods=['POST','PUT'])
 def update(entity):
     '''update the entities via this interface'''
-    return None
+    myWorld.set(entity, flask_post_json())
+    return myWorld.get(entity)
 
 @app.route("/world", methods=['POST','GET'])    
 def world():
     '''you should probably return the world here'''
-    return None
+    return myWorld.world()
 
 @app.route("/entity/<entity>")    
 def get_entity(entity):
     '''This is the GET version of the entity interface, return a representation of the entity'''
-    return None
+    return myWorld.get(entity)
 
 
 @app.route("/clear", methods=['POST','GET'])
 def clear():
     '''Clear the world out!'''
-    return None
+    myWorld.clear()
+    return myWorld.world()
+
 
 
 
@@ -125,4 +168,5 @@ if __name__ == "__main__":
         and run
         gunicorn -k flask_sockets.worker sockets:app
     '''
+   
     app.run()

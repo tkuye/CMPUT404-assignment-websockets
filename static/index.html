@@ -37,8 +37,9 @@ var wscounter = 0;
 var socket;
 
 function debug(str) {
-    var debugDiv = document.getElementById('debug');
-    debugDiv.innerHTML = "" + str;
+    //var debugDiv = document.getElementById('debug');
+   //debugDiv.innerHTML = "" + str;
+   // No longer needed.
 }
 debug("Test");
 
@@ -59,6 +60,44 @@ function drawCircle(context,entity) {
     }
 }
 
+
+function drawSunflower(context, entity) {
+with (context) {
+var x = entity["x"];
+var y = entity["y"];
+var radius = (entity["radius"]) ? entity["radius"] : 50;
+var petalLength = 30;
+var petalsCount = 20;
+var centreColour =  "#8B4513";
+var petalColour =   "#FFD700";
+    // Draw sunflower center
+    beginPath();
+    fillStyle = centreColour;
+    arc(x, y, radius, 0, 2 * Math.PI, false);
+    fill();
+
+    // Draw petals
+    fillStyle = petalColour;
+    strokeStyle = petalColour;
+    lineWidth = 2;
+    for (var i = 0; i < petalsCount; i++) {
+        var angle = (i * 2 * Math.PI) / petalsCount;
+        var startX = x + radius * Math.cos(angle);
+        var startY = y + radius * Math.sin(angle);
+        var endX = startX + petalLength * Math.cos(angle);
+        var endY = startY + petalLength * Math.sin(angle);
+
+        beginPath();
+        moveTo(startX, startY);
+        lineTo(endX, endY);
+        stroke();
+    }
+}
+}
+
+
+
+
 function prepEntity(entity) {
     if (!entity["colour"]) {
         entity["colour"] = "#FF0000";
@@ -72,7 +111,7 @@ function prepEntity(entity) {
 function clearFrame() {
     with(context) {
 	moveTo(0,0);
-	fillStyle = "#000";
+	fillStyle ="#87CEEB";
 	fillRect(0,0,W,H);
     }
 
@@ -83,7 +122,7 @@ function renderFrame() {
     clearFrame();
     for (var key in world) {
         var entity = world[key];
-        drawCircle(context,prepEntity(entity));
+        drawSunflower(context,prepEntity(entity));
     }
 }
 
@@ -121,10 +160,29 @@ function getPosition(e) {
 	}
 }
 
+const loadWorld = () => {
+    var xhr = new XMLHttpRequest();
+    xhr.open("GET", "http://"+host+"/world", true);
+    xhr.setRequestHeader("Content-type","application/json");
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState == 4) {
+            world = JSON.parse(xhr.responseText);
+            drawNextFrame();
+        }
+    }
+    xhr.send();
+}
+
 function addEntity(entity, data) {
     world[entity] = data;
     drawNextFrame(); // (but should we?)
-    //XXX: Send a XHTML Request that updates the entity you just modified!
+   
+   // send to server as xhr
+    var xhr = new XMLHttpRequest();
+    xhr.open("POST", "http://"+host+"/entity/"+entity, true);
+    xhr.setRequestHeader("Content-type","application/json");
+    xhr.send(JSON.stringify(data));
+
 }
 var counter = 0;
 function addEntityWithoutName(data) {
@@ -231,15 +289,15 @@ mouse = (function() {
 // Add the application specific mouse listeners!
 //XXX: TODO Make these prettier!
 mouse.mousedowners.push(function(x,y,clicked,e) {
-    addEntityWithoutName({'x':x,'y':y,'colour':'blue'});
+    addEntityWithoutName({'x':x,'y':y,'colour':'#00bfff'});
 });
 
 mouse.mouseuppers.push(function(x,y,clicked,e) {
-    addEntityWithoutName({'x':x,'y':y,'colour':'red'});
+    addEntityWithoutName({'x':x,'y':y,'colour':'#8F00FF'});
 });
 
 mouse.mousedraggers.push(function(x,y,clicked,e) {
-    addEntityWithoutName({'x':x,'y':y,'colour':'green',
+    addEntityWithoutName({'x':x,'y':y,'colour':'#7CFC00',
                           'radius':10});
 });
 
@@ -250,26 +308,35 @@ function update() {
 
 
 function wsSetup() {
-    var url = "ws://"+host+"/subscribe";   
+    var url = "ws://"+host+"/subscribe"; 
+
     socket = new WebSocket(url);
+    
     socket.onopen = function() {
-        //XXX: TODO What are you going to do here?
+        debug("WebSocket Opened");
+        
     };
+
     socket.onerror = function(msg) {
         debug("WebSocket Error:" + msg.data);
     };
+
     socket.onmessage = function(msg) {  
-        try {
-            debug("WebSocket Recv:" + msg.data);
-            //XXX: TODO What are you going to do here?            
-        } catch (e) {
-            alert("socket on message: " + e);
-        }
+        var data = JSON.parse(msg.data);
+        var entity = Object.keys(data)[0];
+        data = data[entity];
+        world[entity] = data;
+        drawNextFrame();
     }; 
+
+    socket.onclose = function() {
+        debug("WebSocket Closed");
+    };
 }
 
-wsSetup();
 
+wsSetup();
+loadWorld();
 
 
 

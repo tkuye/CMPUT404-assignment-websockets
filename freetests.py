@@ -70,6 +70,7 @@ class WorldClient(WebSocketClient):
         kcnt = 0
         for key in w:
             if (key in world):
+                
                 assert world[key] == w[key]
             world[key] = w[key]
             kcnt += 1
@@ -81,6 +82,7 @@ class WorldClient(WebSocketClient):
     def incoming(self):
         while self.count < calls:
             m = self.receive()
+            
             print("Incoming RECV %s %s " % (self.name,m))
             if m is not None:
                 self.receive_my_message( m )
